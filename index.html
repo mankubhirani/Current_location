@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GeoLocator — Find Any Point on Earth</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    :root {
+      --bg:      #0a0e1a;
+      --surface: #111827;
+      --card:    #161d2e;
+      --border:  #1f2d47;
+      --accent:  #00e5ff;
+      --accent2: #7c3aed;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --success: #10b981;
+      --error:   #f43f5e;
+      --mono:    'Space Mono', monospace;
+      --sans:    'DM Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; }
+    .orb-1 { width: 500px; height: 500px; background: rgba(0,229,255,.07); top: -150px; left: -100px; }
+    .orb-2 { width: 400px; height: 400px; background: rgba(124,58,237,.08); bottom: -100px; right: -80px; }
+
+    .app-wrapper {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 1.4rem 2rem;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+      background: rgba(10,14,26,.7);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo-mark { display: inline-flex; align-items: center; gap: .6rem; }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px; display: grid; place-items: center; font-size: .85rem;
+    }
+    .logo-text { font-family: var(--mono); font-size: 1.05rem; letter-spacing: .04em; color: var(--text); }
+    .logo-text span { color: var(--accent); }
+    .badge-free {
+      font-family: var(--mono); font-size: .65rem; letter-spacing: .1em;
+      padding: .25rem .6rem; border-radius: 20px;
+      background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.3);
+      color: var(--success);
+    }
+
+    main {
+      flex: 1; padding: 2.5rem 1.5rem;
+      display: flex; flex-direction: column; align-items: center; gap: 1.8rem;
+    }
+
+    .headline { text-align: center; max-width: 520px; }
+    .headline h1 {
+      font-family: var(--mono); font-size: clamp(1.3rem, 4vw, 1.9rem);
+      font-weight: 700; line-height: 1.25; color: #fff;
+    }
+    .headline h1 span {
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .headline p { margin-top: .5rem; color: var(--muted); font-size: .9rem; font-weight: 300; }
+
+    .geo-card {
+      width: 100%; max-width: 860px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px; overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.5), 0 0 0 1px rgba(0,229,255,.04);
+    }
+
+    .input-panel { padding: 2rem; border-bottom: 1px solid var(--border); }
+
+    .coords-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+    @media (max-width: 540px) { .coords-row { grid-template-columns: 1fr; } }
+
+    .field-wrap { display: flex; flex-direction: column; gap: .4rem; }
+
+    label {
+      font-family: var(--mono); font-size: .7rem;
+      letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+    }
+    label .range-hint { float: right; color: var(--border); }
+
+    input[type="number"] {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: var(--mono); font-size: .95rem;
+      padding: .72rem 1rem; width: 100%;
+      transition: border-color .2s, box-shadow .2s;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"]::placeholder { color: #2a3a55; }
+    input[type="number"]:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,229,255,.12);
+    }
+    input.is-invalid { border-color: var(--error) !important; box-shadow: 0 0 0 3px rgba(244,63,94,.12) !important; }
+    input.is-valid   { border-color: var(--success); box-shadow: 0 0 0 3px rgba(16,185,129,.1); }
+
+    .field-error {
+      font-size: .76rem; color: var(--error);
+      display: none; align-items: center; gap: .3rem; margin-top: .1rem;
+    }
+    .field-error.show { display: flex; }
+
+    .presets {
+      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+      margin-top: 1rem; font-size: .78rem; color: var(--muted);
+    }
+    .presets-label { font-family: var(--mono); font-size: .67rem; letter-spacing: .1em; color: var(--muted); }
+    .preset-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: .26rem .65rem;
+      font-size: .75rem; color: var(--muted); cursor: pointer;
+      transition: border-color .15s, color .15s, background .15s;
+      font-family: var(--sans);
+    }
+    .preset-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,.05); }
+
+    .action-row {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem; margin-top: 1.4rem;
+    }
+
+    .alert-inline {
+      display: none; align-items: center; gap: .5rem;
+      font-size: .83rem; padding: .5rem .9rem; border-radius: 8px;
+      background: rgba(244,63,94,.1); border: 1px solid rgba(244,63,94,.25); color: var(--error);
+    }
+    .alert-inline.show { display: flex; }
+
+    .btn-locate {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .75rem 1.8rem;
+      background: linear-gradient(135deg, var(--accent), #0090a8);
+      border: none; border-radius: 10px;
+      font-family: var(--mono); font-size: .85rem; font-weight: 700; letter-spacing: .06em;
+      color: #0a0e1a; cursor: pointer;
+      transition: transform .15s, box-shadow .2s, filter .2s;
+      white-space: nowrap;
+    }
+    .btn-locate:hover { filter: brightness(1.1); box-shadow: 0 0 28px rgba(0,229,255,.4); transform: translateY(-1px); }
+    .btn-locate:active { transform: translateY(0); }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(10,14,26,.3); border-top-color: #0a0e1a;
+      border-radius: 50%; animation: spin .6s linear infinite; display: none;
+    }
+    .btn-locate.loading .btn-text { display: none; }
+    .btn-locate.loading .spinner  { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .map-panel { position: relative; height: 440px; background: var(--surface); }
+    @media (max-width: 540px) { .map-panel { height: 320px; } }
+
+    #map { width: 100%; height: 100%; }
+
+    .leaflet-container { background: #111827 !important; }
+    .leaflet-control-zoom a {
+      background: var(--card) !important; color: var(--accent) !important;
+      border-color: var(--border) !important;
+    }
+    .leaflet-control-zoom a:hover { background: var(--surface) !important; }
+    .leaflet-control-attribution {
+      background: rgba(10,14,26,.75) !important;
+      color: var(--muted) !important; font-size: .65rem !important;
+    }
+    .leaflet-control-attribution a { color: var(--accent) !important; }
+    .leaflet-popup-content-wrapper {
+      background: var(--card) !important; color: var(--text) !important;
+      border: 1px solid var(--border) !important; border-radius: 10px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+    }
+    .leaflet-popup-tip { background: var(--card) !important; }
+    .leaflet-popup-content { font-family: 'Space Mono', monospace !important; font-size: .8rem !important; line-height: 1.6 !important; }
+
+    .map-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+      pointer-events: none; transition: opacity .35s;
+      background: var(--surface); z-index: 999;
+    }
+    .map-placeholder.hidden { opacity: 0; pointer-events: none; }
+    .placeholder-icon {
+      width: 68px; height: 68px; border-radius: 50%;
+      background: rgba(0,229,255,.06); border: 1px dashed rgba(0,229,255,.2);
+      display: grid; place-items: center; font-size: 1.7rem;
+    }
+    .map-placeholder p { color: var(--muted); font-size: .88rem; text-align: center; line-height: 1.6; }
+
+    .coord-badge {
+      position: absolute; bottom: 1rem; left: 1rem;
+      background: rgba(10,14,26,.88); backdrop-filter: blur(8px);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: .4rem .85rem; font-family: var(--mono); font-size: .75rem;
+      color: var(--accent); display: none; pointer-events: none; z-index: 1000;
+    }
+    .coord-badge.show { display: block; }
+
+    footer {
+      text-align: center; padding: 1.1rem;
+      font-size: .77rem; color: var(--muted);
+      border-top: 1px solid var(--border); position: relative; z-index: 1;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="app-wrapper">
+
+  <header>
+    <div class="logo-mark">
+      <div class="logo-icon">📍</div>
+      <span class="logo-text">Geo<span>Locator</span></span>
+    </div>
+    <span class="badge-free">✓ NO API KEY</span>
+  </header>
+
+  <main>
+    <div class="headline">
+      <h1>Find Any Point on <span>Earth</span></h1>
+      <p>Enter coordinates to drop a pin on the interactive map — instantly, no signup needed.</p>
+    </div>
+
+    <div class="geo-card">
+
+      <div class="input-panel">
+        <div class="coords-row">
+
+          <div class="field-wrap">
+            <label for="lat">Latitude <span class="range-hint">−90 → 90</span></label>
+            <input type="number" id="lat" placeholder="e.g. 28.6139" step="any" autocomplete="off"/>
+            <span class="field-error" id="lat-err">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5.5" stroke="currentColor"/><path d="M6 3.5v3M6 8.5h.01" stroke="currentColor" stroke-linecap="round"/></svg>
+              &nbsp;<span>Must be between −90 and 90</span>
+            </span>
+          </div>
+
+          <div class="field-wrap">
+            <label for="lng">Longitude <span class="range-hint">−180 → 180</span></label>
+            <input type="number" id="lng" placeholder="e.g. 77.2090" step="any" autocomplete="off"/>
+            <span class="field-error" id="lng-err">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5.5" stroke="currentColor"/><path d="M6 3.5v3M6 8.5h.01" stroke="currentColor" stroke-linecap="round"/></svg>
+              &nbsp;<span>Must be between −180 and 180</span>
+            </span>
+          </div>
+
+        </div>
+
+        <div class="presets">
+          <span class="presets-label">QUICK PINS:</span>
+          <button class="preset-btn" data-lat="28.6139"  data-lng="77.2090">🇮🇳 New Delhi</button>
+          <button class="preset-btn" data-lat="19.0760"  data-lng="72.8777">🇮🇳 Mumbai</button>
+          <button class="preset-btn" data-lat="48.8566"  data-lng="2.3522">🇫🇷 Paris</button>
+          <button class="preset-btn" data-lat="40.7128"  data-lng="-74.0060">🇺🇸 New York</button>
+          <button class="preset-btn" data-lat="35.6762"  data-lng="139.6503">🇯🇵 Tokyo</button>
+          <button class="preset-btn" data-lat="-33.8688" data-lng="151.2093">🇦🇺 Sydney</button>
+        </div>
+
+        <div class="action-row">
+          <div class="alert-inline" id="global-err">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6.5" stroke="currentColor"/><path d="M7 4v4M7 10h.01" stroke="currentColor" stroke-linecap="round"/></svg>
+            &nbsp;<span id="global-err-text">Please fix the errors above.</span>
+          </div>
+          <div style="margin-left:auto">
+            <button class="btn-locate" id="show-btn">
+              <span class="btn-text">📍 Show Location</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-panel">
+        <div id="map"></div>
+        <div class="map-placeholder" id="placeholder">
+          <div class="placeholder-icon">🗺️</div>
+          <p>Enter coordinates above<br>and click <strong style="color:var(--accent)">Show Location</strong></p>
+        </div>
+        <div class="coord-badge" id="coord-badge"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    Powered by <a href="https://leafletjs.com" target="_blank">Leaflet.js</a> &amp;
+    <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a>
+    &nbsp;·&nbsp; 100% Free — No API Key Required
+  </footer>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  let map = null, marker = null;
+
+  function setFieldState(inputId, errId, isError, msg) {
+    const inp = $(inputId), err = $(errId);
+    if (isError) {
+      inp.classList.add('is-invalid'); inp.classList.remove('is-valid');
+      err.querySelector('span').textContent = msg;
+      err.classList.add('show');
+    } else {
+      inp.classList.remove('is-invalid');
+      if (inp.value !== '') inp.classList.add('is-valid');
+      err.classList.remove('show');
+    }
+  }
+
+  function validate() {
+    let ok = true;
+    const latStr = $('lat').value.trim();
+    const lngStr = $('lng').value.trim();
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
+
+    if (latStr === '' || isNaN(lat)) {
+      setFieldState('lat','lat-err',true,'Required — enter a latitude'); ok = false;
+    } else if (lat < -90 || lat > 90) {
+      setFieldState('lat','lat-err',true,'Must be between −90 and 90'); ok = false;
+    } else {
+      setFieldState('lat','lat-err',false,'');
+    }
+
+    if (lngStr === '' || isNaN(lng)) {
+      setFieldState('lng','lng-err',true,'Required — enter a longitude'); ok = false;
+    } else if (lng < -180 || lng > 180) {
+      setFieldState('lng','lng-err',true,'Must be between −180 and 180'); ok = false;
+    } else {
+      setFieldState('lng','lng-err',false,'');
+    }
+
+    return ok ? { lat, lng } : null;
+  }
+
+  function makeIcon() {
+    return L.divIcon({
+      className: '',
+      html: `<div style="position:relative;width:36px;height:36px">
+        <div style="width:36px;height:36px;border-radius:50% 50% 50% 0;
+          background:linear-gradient(135deg,#00e5ff,#7c3aed);
+          transform:rotate(-45deg);
+          box-shadow:0 4px 20px rgba(0,229,255,.55);
+          border:2px solid rgba(255,255,255,.2)">
+        </div>
+        <div style="width:10px;height:10px;background:#fff;border-radius:50%;
+          position:absolute;top:13px;left:13px;opacity:.9">
+        </div>
+      </div>`,
+      iconSize:   [36, 36],
+      iconAnchor: [18, 36],
+      popupAnchor:[0, -40]
+    });
+  }
+
+  function showLocation(lat, lng) {
+    const btn = $('show-btn');
+    btn.classList.add('loading');
+
+    setTimeout(() => {
+      const coords = [lat, lng];
+
+      if (!map) {
+        map = L.map('map', { zoomControl: true }).setView(coords, 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19,
+        }).addTo(map);
+      } else {
+        map.flyTo(coords, 13, { animate: true, duration: 1.1 });
+      }
+
+      if (marker) {
+        marker.setLatLng(coords);
+      } else {
+        marker = L.marker(coords, { icon: makeIcon() }).addTo(map);
+      }
+
+      marker.bindPopup(`
+        <div style="text-align:center;padding:.3rem .5rem">
+          <div style="font-size:.65rem;color:#64748b;margin-bottom:.4rem;letter-spacing:.1em;font-family:'Space Mono',monospace">COORDINATES</div>
+          <div style="color:#00e5ff;font-family:'Space Mono',monospace">Lat: ${lat.toFixed(6)}</div>
+          <div style="color:#00e5ff;font-family:'Space Mono',monospace">Lng: ${lng.toFixed(6)}</div>
+        </div>
+      `).openPopup();
+
+      $('placeholder').classList.add('hidden');
+
+      const badge = $('coord-badge');
+      badge.textContent = `${lat.toFixed(6)},  ${lng.toFixed(6)}`;
+      badge.classList.add('show');
+
+      btn.classList.remove('loading');
+    }, 350);
+  }
+
+  $('show-btn').addEventListener('click', () => {
+    $('global-err').classList.remove('show');
+    const result = validate();
+    if (!result) {
+      $('global-err').classList.add('show');
+      $('global-err-text').textContent = 'Please fix the errors above.';
+      return;
+    }
+    showLocation(result.lat, result.lng);
+  });
+
+  $('lat').addEventListener('blur', () => {
+    const v = parseFloat($('lat').value);
+    if ($('lat').value.trim()===''||isNaN(v)) setFieldState('lat','lat-err',true,'Required — enter a latitude');
+    else if (v<-90||v>90)                    setFieldState('lat','lat-err',true,'Must be between −90 and 90');
+    else                                     setFieldState('lat','lat-err',false,'');
+  });
+
+  $('lng').addEventListener('blur', () => {
+    const v = parseFloat($('lng').value);
+    if ($('lng').value.trim()===''||isNaN(v)) setFieldState('lng','lng-err',true,'Required — enter a longitude');
+    else if (v<-180||v>180)                   setFieldState('lng','lng-err',true,'Must be between −180 and 180');
+    else                                      setFieldState('lng','lng-err',false,'');
+  });
+
+  [$('lat'), $('lng')].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('show-btn').click();
+  }));
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $('lat').value = btn.dataset.lat;
+      $('lng').value = btn.dataset.lng;
+      setFieldState('lat','lat-err',false,'');
+      setFieldState('lng','lng-err',false,'');
+      $('global-err').classList.remove('show');
+      $('show-btn').click();
+    });
+  });
+</script>
+
+</body>
+</html>
